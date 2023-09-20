@@ -17,8 +17,8 @@
 *****************************************************************************************
 '''
 
-# Team ID:          [ Team-ID ]
-# Author List:		[ Names of team members worked on this file separated by Comma: Name1, Name2, ... ]
+# Team ID:          [ CL#2848 ]
+# Author List:		[ Pratik ]
 # Filename:		    task1a.py
 # Functions:
 #			        [ Comma separated list of functions in this file ]
@@ -95,19 +95,13 @@ def detect_aruco(image):
 
     ############ Function VARIABLES ############
 
-    # ->  You can remove these variables if needed. These are just for suggestions to let you get started
-
-    # Use this variable as a threshold value to detect aruco markers of certain size.
-    # Ex: avoid markers/boxes placed far away from arm's reach position  
+    # variable as a threshold value to detect aruco markers of certain size.
     aruco_area_threshold = 1500
 
     # The camera matrix is defined as per camera info loaded from the plugin used. 
-    # You may get this from /camer_info topic when camera is spawned in gazebo.
-    # Make sure you verify this matrix once if there are calibration issues.
     cam_mat = np.array([[931.1829833984375, 0.0, 640.0], [0.0, 931.1829833984375, 360.0], [0.0, 0.0, 1.0]])
 
     # The distortion matrix is currently set to 0. 
-    # We will be using it during Stage 2 hardware as Intel Realsense Camera provides these camera info.
     dist_mat = np.array([0.0,0.0,0.0,0.0,0.0])
 
     # We are using 150x150 aruco marker size
@@ -125,13 +119,54 @@ def detect_aruco(image):
     # INSTRUCTIONS & HELP : 
 
     #	->  Convert input BGR image to GRAYSCALE for aruco detection
+    
+    # defining aruco dictionary and parameters
+    arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+    arucoParams = cv2.aruco.DetectorParameters()
 
-    #   ->  Use these aruco parameters-
-    #       ->  Dictionary: 4x4_50 (4x4 only until 50 aruco IDs)
+    # finding corners and aruco ids
+    corners, ids, _ = cv2.aruco.detectMarkers(image, arucoDict, parameters=arucoParams)	
 
-    #   ->  Detect aruco marker in the image and store 'corners' and 'ids'
-    #       ->  HINT: Handle cases for empty markers detection. 
-
+    if len(corners) > 0:
+        
+        # flatten the ArUco IDs list
+        ids = ids.flatten()
+        
+        # loop over the detected ArUCo corners
+        for (markerCorner, markerID) in zip(corners, ids):
+            # extract the marker corners (which are always returned in top-left, top-right, bottom-right, and bottom-left order)
+            corners = markerCorner.reshape((4, 2))
+            (topLeft, topRight, bottomRight, bottomLeft) = corners
+            
+            # convert each of the (x, y)-coordinate pairs to integers
+            topRight = (int(topRight[0]), int(topRight[1]))
+            bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
+            bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
+            topLeft = (int(topLeft[0]), int(topLeft[1]))
+            
+            # draw the bounding box of the ArUCo detection
+            cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
+            cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
+            cv2.line(image, bottomRight, bottomLeft, (0, 255, 0), 2)
+            cv2.line(image, bottomLeft, topLeft, (0, 255, 0), 2)
+            
+            # compute and draw the center (x, y)-coordinates of the ArUco marker
+            cX = int((topLeft[0] + bottomRight[0]) / 2.0)
+            cY = int((topLeft[1] + bottomRight[1]) / 2.0)
+            cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
+            
+            # finding midpoint of rightside of aruco marker
+            (midx, midy) = int((topRight[0] + bottomRight[0]) / 2), int((topRight[1] + bottomRight[1]) / 2)
+            
+            # finding orientation
+            angle = math.atan2((cY - midy),(midx - cX))
+            
+            # draw the ArUco marker ID on the frame
+            cv2.putText(image, str(markerID), (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    
+    cv2.imshow('rgb', image)
+    cv2.waitKey(1)
+    
     #   ->  Draw detected marker on the image frame which will be shown later
 
     #   ->  Loop over each marker ID detected in frame and calculate area using function defined above (calculate_rectangle_area(coordinates))
@@ -153,27 +188,18 @@ def detect_aruco(image):
 
 class aruco_tf(Node):
     '''
-    ___CLASS___
-
     Description:    Class which servers purpose to define process for detecting aruco marker and publishing tf on pose estimated.
     '''
 
     def __init__(self):
         '''
         Description:    Initialization of class aruco_tf
-                        All classes have a function called __init__(), which is always executed when the class is being initiated.
-                        The __init__() function is called automatically every time the class is being used to create a new object.
-                        You can find more on this topic here -> https://www.w3schools.com/python/python_classes.asp
         '''
-
+        
         super().__init__('aruco_tf_publisher')                                          # registering node
-
-        ############ Topic SUBSCRIPTIONS ############
 
         self.color_cam_sub = self.create_subscription(Image, '/camera/color/image_raw', self.colorimagecb, 10)
         self.depth_cam_sub = self.create_subscription(Image, '/camera/aligned_depth_to_color/image_raw', self.depthimagecb, 10)
-
-        ############ Constructor VARIABLES/OBJECTS ############
 
         image_processing_rate = 0.2                                                     # rate of time to process image (seconds)
         self.bridge = CvBridge()                                                        # initialise CvBridge object for image conversion
@@ -183,9 +209,8 @@ class aruco_tf(Node):
         self.timer = self.create_timer(image_processing_rate, self.process_image)       # creating a timer based function which gets called on every 0.2 seconds (as defined by 'image_processing_rate' variable)
         
         self.cv_image = None                                                            # colour raw image variable (from colorimagecb())
-        self.depth_image = None                                                         # depth image variable (from depthimagecb())
-
-
+        self.depth_image = None                                                         # depth image variable (from depthimagecb())           
+            
     def depthimagecb(self, data):
         '''
         Description:    Callback function for aligned depth camera topic. 
@@ -196,17 +221,8 @@ class aruco_tf(Node):
 
         Returns:
         '''
-
-        ############ ADD YOUR CODE HERE ############
-
-        # INSTRUCTIONS & HELP : 
-
-        #	->  Use data variable to convert ROS Image message to CV2 Image type
-
-        #   ->  HINT: You may use CvBridge to do the same
-
-        ############################################
-
+        
+        self.depth_image = self.bridge.imgmsg_to_cv2(data, "32FC1")
 
     def colorimagecb(self, data):
         '''
@@ -218,19 +234,8 @@ class aruco_tf(Node):
 
         Returns:
         '''
-
-        ############ ADD YOUR CODE HERE ############
-
-        # INSTRUCTIONS & HELP : 
-
-        #	->  Use data variable to convert ROS Image message to CV2 Image type
-
-        #   ->  HINT:   You may use CvBridge to do the same
-        #               Check if you need any rotation or flipping image as input data maybe different than what you expect to be.
-        #               You may use cv2 functions such as 'flip' and 'rotate' to do the same
-
-        ############################################
-
+        
+        self.cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
 
     def process_image(self):
         '''
@@ -238,14 +243,11 @@ class aruco_tf(Node):
 
         Args:
         Returns:
-        '''
-
+        '''      
+        
         ############ Function VARIABLES ############
 
         # These are the variables defined from camera info topic such as image pixel size, focalX, focalY, etc.
-        # Make sure you verify these variable values once. As it may affect your result.
-        # You can find more on these variables here -> http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/CameraInfo.html
-        
         sizeCamX = 1280
         sizeCamY = 720
         centerCamX = 640 
@@ -259,6 +261,7 @@ class aruco_tf(Node):
         # INSTRUCTIONS & HELP : 
 
         #	->  Get aruco center, distance from rgb, angle, width and ids list from 'detect_aruco_center' defined above
+        detect_aruco(self.cv_image)
 
         #   ->  Loop over detected box ids received to calculate position and orientation transform to publish TF 
 
@@ -313,26 +316,20 @@ def main():
     '''
 
     rclpy.init(args=sys.argv)                                       # initialisation
-
     node = rclpy.create_node('aruco_tf_process')                    # creating ROS node
-
     node.get_logger().info('Node created: Aruco tf process')        # logging information
-
     aruco_tf_class = aruco_tf()                                     # creating a new object for class 'aruco_tf'
-
-    rclpy.spin(aruco_tf_class)                                      # spining on the object to make it alive in ROS 2 DDS
-
-    aruco_tf_class.destroy_node()                                   # destroy node after spin ends
-
-    rclpy.shutdown()                                                # shutdown process
-
-
+    
+    try:
+        rclpy.spin(aruco_tf_class)                                  # spining on the object to make it alive in ROS 2 DDS
+        
+    except KeyboardInterrupt:
+        pass
+    
+    finally:    
+        aruco_tf_class.destroy_node()                               # destroy node after spin ends
+        rclpy.try_shutdown()                                        # shutdown process
+        
 if __name__ == '__main__':
-    '''
-    Description:    If the python interpreter is running that module (the source file) as the main program, 
-                    it sets the special __name__ variable to have a value “__main__”. 
-                    If this file is being imported from another module, __name__ will be set to the module’s name.
-                    You can find more on this here -> https://www.geeksforgeeks.org/what-does-the-if-__name__-__main__-do/
-    '''
-
+     
     main()
