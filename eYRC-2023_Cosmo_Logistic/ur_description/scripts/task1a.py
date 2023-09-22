@@ -57,22 +57,23 @@ def calculate_rectangle_area(coordinates):
         width       (float):    width of detected aruco
     '''
 
-    ############ Function VARIABLES ############
-
-    # You can remove these variables after reading the instructions. These are just for sample.
-
     area = None
     width = None
-
-    ############ ADD YOUR CODE HERE ############
-
-    # INSTRUCTIONS & HELP : 
-    #	->  Recevice coordiantes from 'detectMarkers' using cv2.aruco library 
-    #       and use these coordinates to calculate area and width of aruco detected.
-    #	->  Extract values from input set of 4 (x,y) coordinates 
-    #       and formulate width and height of aruco detected to return 'area' and 'width'.
-
-    ############################################
+    
+    (topLeft, topRight, bottomRight, bottomLeft) = coordinates
+    
+    # convert each of the (x, y)-coordinate pairs to integers
+    topRight = (int(topRight[0]), int(topRight[1]))
+    bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
+    bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
+    topLeft = (int(topLeft[0]), int(topLeft[1]))                 
+    
+    # Calculate the width and height of the marker
+    width = np.sqrt((topRight[0] - topLeft[0])**2 + (topRight[1] - topLeft[1])**2)
+    height = np.sqrt((topRight[0] - bottomRight[0])**2 + (topRight[1] - bottomRight[1])**2)
+    
+    # Calculate the area of the marker
+    area = width * height
 
     return area, width
 
@@ -93,19 +94,17 @@ def detect_aruco(image):
         ids                     (list):     List of all aruco marker IDs detected in a single frame 
     '''
 
-    ############ Function VARIABLES ############
-
     # variable as a threshold value to detect aruco markers of certain size.
     aruco_area_threshold = 1500
 
     # The camera matrix is defined as per camera info loaded from the plugin used. 
-    cam_mat = np.array([[931.1829833984375, 0.0, 640.0], [0.0, 931.1829833984375, 360.0], [0.0, 0.0, 1.0]])
+    camera_matrix = np.array([[931.1829833984375, 0.0, 640.0], [0.0, 931.1829833984375, 360.0], [0.0, 0.0, 1.0]])
 
     # The distortion matrix is currently set to 0. 
-    dist_mat = np.array([0.0,0.0,0.0,0.0,0.0])
+    distance_matrix = np.array([0.0,0.0,0.0,0.0,0.0])
 
     # We are using 150x150 aruco marker size
-    size_of_aruco_m = 0.15
+    marker_size = 0.15
 
     # You can remove these variables after reading the instructions. These are just for sample.
     center_aruco_list = []
@@ -113,19 +112,16 @@ def detect_aruco(image):
     angle_aruco_list = []
     width_aruco_list = []
     ids = []
- 
-    ############ ADD YOUR CODE HERE ############
-
-    # INSTRUCTIONS & HELP : 
-
-    #	->  Convert input BGR image to GRAYSCALE for aruco detection
+        
+    # gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray_image = image
     
     # defining aruco dictionary and parameters
     arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     arucoParams = cv2.aruco.DetectorParameters()
 
     # finding corners and aruco ids
-    corners, ids, _ = cv2.aruco.detectMarkers(image, arucoDict, parameters=arucoParams)	
+    corners, ids, _ = cv2.aruco.detectMarkers(gray_image, arucoDict, parameters=arucoParams)	
 
     if len(corners) > 0:
         
@@ -134,52 +130,46 @@ def detect_aruco(image):
         
         # loop over the detected ArUCo corners
         for (markerCorner, markerID) in zip(corners, ids):
+            
             # extract the marker corners (which are always returned in top-left, top-right, bottom-right, and bottom-left order)
             corners = markerCorner.reshape((4, 2))
             (topLeft, topRight, bottomRight, bottomLeft) = corners
             
-            # convert each of the (x, y)-coordinate pairs to integers
+            # convert each of the (x,y)-coordinate pairs to integers
             topRight = (int(topRight[0]), int(topRight[1]))
             bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
             bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
             topLeft = (int(topLeft[0]), int(topLeft[1]))
-            
+                        
             # draw the bounding box of the ArUCo detection
-            cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
-            cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
-            cv2.line(image, bottomRight, bottomLeft, (0, 255, 0), 2)
-            cv2.line(image, bottomLeft, topLeft, (0, 255, 0), 2)
-            
-            # compute and draw the center (x, y)-coordinates of the ArUco marker
-            cX = int((topLeft[0] + bottomRight[0]) / 2.0)
-            cY = int((topLeft[1] + bottomRight[1]) / 2.0)
-            cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
-            
-            # finding midpoint of rightside of aruco marker
-            (midx, midy) = int((topRight[0] + bottomRight[0]) / 2), int((topRight[1] + bottomRight[1]) / 2)
-            
-            # finding orientation
-            angle = math.atan2((cY - midy),(midx - cX))
+            cv2.line(gray_image, topLeft, topRight, (0, 255, 0), 2)
+            cv2.line(gray_image, topRight, bottomRight, (0, 255, 0), 2)
+            cv2.line(gray_image, bottomRight, bottomLeft, (0, 255, 0), 2)
+            cv2.line(gray_image, bottomLeft, topLeft, (0, 255, 0), 2)
             
             # draw the ArUco marker ID on the frame
-            cv2.putText(image, str(markerID), (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(gray_image, str(markerID), (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
     
-    cv2.imshow('rgb', image)
-    cv2.waitKey(1)
-    
-    #   ->  Draw detected marker on the image frame which will be shown later
+            area, width = calculate_rectangle_area(corners)
+                            
+            if(area > aruco_area_threshold):
+   
+                # compute and draw the center (x, y)-coordinates of the ArUco marker
+                cX = int((topLeft[0] + bottomRight[0]) / 2.0)
+                cY = int((topLeft[1] + bottomRight[1]) / 2.0)
+                cv2.circle(gray_image, (cX, cY), 4, (0, 0, 255), -1)
+                
+                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(markerCorner, marker_size, camera_matrix, distance_matrix)
+                
+                rotation_matrix = np.zeros((3, 3))
+                cv2.Rodrigues(rvecs, rotation_matrix)
+                
+                axis_length = 0.1
 
-    #   ->  Loop over each marker ID detected in frame and calculate area using function defined above (calculate_rectangle_area(coordinates))
+                cv2.drawFrameAxes(image, camera_matrix, distance_matrix, rotation_matrix, tvecs[0], axis_length)
 
-    #   ->  Remove tags which are far away from arm's reach positon based on some threshold defined
-
-    #   ->  Calculate center points aruco list using math and distance from RGB camera using pose estimation of aruco marker
-    #       ->  HINT: You may use numpy for center points and 'estimatePoseSingleMarkers' from cv2 aruco library for pose estimation
-
-    #   ->  Draw frame axes from coordinates received using pose estimation
-    #       ->  HINT: You may use 'cv2.drawFrameAxes'
-
-    ############################################
+    # cv2.imshow('rgb', image)
+    # cv2.waitKey(1)
 
     return center_aruco_list, distance_from_rgb_list, angle_aruco_list, width_aruco_list, ids
 
@@ -208,7 +198,7 @@ class aruco_tf(Node):
         self.br = tf2_ros.TransformBroadcaster(self)                                    # object as transform broadcaster to send transform wrt some frame_id
         self.timer = self.create_timer(image_processing_rate, self.process_image)       # creating a timer based function which gets called on every 0.2 seconds (as defined by 'image_processing_rate' variable)
         
-        self.cv_image = None                                                            # colour raw image variable (from colorimagecb())
+        self.rgb_image = None                                                           # colour raw image variable (from colorimagecb())
         self.depth_image = None                                                         # depth image variable (from depthimagecb())           
             
     def depthimagecb(self, data):
@@ -235,7 +225,7 @@ class aruco_tf(Node):
         Returns:
         '''
         
-        self.cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        self.rgb_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
 
     def process_image(self):
         '''
@@ -245,8 +235,6 @@ class aruco_tf(Node):
         Returns:
         '''      
         
-        ############ Function VARIABLES ############
-
         # These are the variables defined from camera info topic such as image pixel size, focalX, focalY, etc.
         sizeCamX = 1280
         sizeCamY = 720
@@ -255,13 +243,8 @@ class aruco_tf(Node):
         focalX = 931.1829833984375
         focalY = 931.1829833984375
             
-
-        ############ ADD YOUR CODE HERE ############
-
-        # INSTRUCTIONS & HELP : 
-
-        #	->  Get aruco center, distance from rgb, angle, width and ids list from 'detect_aruco_center' defined above
-        detect_aruco(self.cv_image)
+        # Get aruco center, distance from rgb, angle, width and ids list from 'detect_aruco_center'
+        detect_aruco(self.rgb_image)
 
         #   ->  Loop over detected box ids received to calculate position and orientation transform to publish TF 
 
