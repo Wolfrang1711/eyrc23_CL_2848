@@ -27,9 +27,6 @@
 #			        Publishing Topics  - [ /tf ]
 #                   Subscribing Topics - [ /camera/aligned_depth_to_color/image_raw, /etc... ]
 
-
-################### IMPORT MODULES #######################
-
 import rclpy
 import sys
 import cv2
@@ -39,11 +36,8 @@ import numpy as np
 from rclpy.node import Node
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import TransformStamped
-from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CompressedImage, Image
-
-
-##################### FUNCTION DEFINITIONS #######################
 
 def calculate_rectangle_area(coordinates):
     '''
@@ -77,7 +71,6 @@ def calculate_rectangle_area(coordinates):
 
     return area, width
 
-
 def detect_aruco(image):
     '''
     Description:    Function to perform aruco detection and return each detail of aruco detected 
@@ -107,12 +100,12 @@ def detect_aruco(image):
     marker_size = 0.15
 
     # You can remove these variables after reading the instructions. These are just for sample.
-    center_aruco_list = []
-    distance_from_rgb_list = []
-    angle_aruco_list = []
-    width_aruco_list = []
     ids = []
-        
+    aruco_info_list = []
+    rotation_matrix = np.zeros((3, 3))
+    
+    axis_length = 0.1
+
     # gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray_image = image
     
@@ -130,7 +123,7 @@ def detect_aruco(image):
         
         # loop over the detected ArUCo corners
         for (markerCorner, markerID) in zip(corners, ids):
-            
+                        
             # extract the marker corners (which are always returned in top-left, top-right, bottom-right, and bottom-left order)
             corners = markerCorner.reshape((4, 2))
             (topLeft, topRight, bottomRight, bottomLeft) = corners
@@ -158,23 +151,28 @@ def detect_aruco(image):
                 cX = int((topLeft[0] + bottomRight[0]) / 2.0)
                 cY = int((topLeft[1] + bottomRight[1]) / 2.0)
                 cv2.circle(gray_image, (cX, cY), 4, (0, 0, 255), -1)
-                
+                                
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(markerCorner, marker_size, camera_matrix, distance_matrix)
+                                
+                # Get the rotation matrix from the rotation vector
+                rotation_matrix, _ = cv2.Rodrigues(rvecs)
                 
-                rotation_matrix = np.zeros((3, 3))
-                cv2.Rodrigues(rvecs, rotation_matrix)
-                
-                axis_length = 0.1
+                # Create a Rotation object from the rotation matrix
+                r = Rotation.from_matrix(rotation_matrix)
 
+                # Convert the rotation to Euler angles (in radians)  'zyx' specifies the order of rotations
+                yaw, _, _ = r.as_euler('zyx', degrees=False) 
+                
                 cv2.drawFrameAxes(image, camera_matrix, distance_matrix, rotation_matrix, tvecs[0], axis_length)
-
-    # cv2.imshow('rgb', image)
-    # cv2.waitKey(1)
-
-    return center_aruco_list, distance_from_rgb_list, angle_aruco_list, width_aruco_list, ids
-
-
-##################### CLASS DEFINITION #######################
+                
+                # Store ArUco marker information in the list
+                aruco_info_list.append({'ID': markerID,
+                                        'Center': (cX, cY),
+                                        'Angle' : yaw,
+                                        'Distance': tvecs[0][0][2],
+                                        'Width': width})
+    
+    return aruco_info_list
 
 class aruco_tf(Node):
     '''
@@ -242,9 +240,14 @@ class aruco_tf(Node):
         centerCamY = 360
         focalX = 931.1829833984375
         focalY = 931.1829833984375
+        
+        aruco_info_list = []
             
         # Get aruco center, distance from rgb, angle, width and ids list from 'detect_aruco_center'
-        detect_aruco(self.rgb_image)
+        aruco_info_list = detect_aruco(self.rgb_image)
+        
+        cv2.imshow("rgb_image", self.rgb_image)
+        cv2.waitKey(1)
 
         #   ->  Loop over detected box ids received to calculate position and orientation transform to publish TF 
 
