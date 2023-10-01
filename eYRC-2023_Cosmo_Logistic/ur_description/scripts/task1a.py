@@ -101,13 +101,11 @@ def detect_aruco(image):
 
     # You can remove these variables after reading the instructions. These are just for sample.
     ids = []
-    aruco_info_list = []
-    rotation_matrix = np.zeros((3, 3))
-    
+    aruco_info_list = []    
     axis_length = 0.1
 
-    # gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray_image = image
+    # Convert input BGR image to GRAYSCALE for aruco detection
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
     # defining aruco dictionary and parameters
     arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
@@ -135,13 +133,13 @@ def detect_aruco(image):
             topLeft = (int(topLeft[0]), int(topLeft[1]))
                         
             # draw the bounding box of the ArUCo detection
-            cv2.line(gray_image, topLeft, topRight, (0, 255, 0), 2)
-            cv2.line(gray_image, topRight, bottomRight, (0, 255, 0), 2)
-            cv2.line(gray_image, bottomRight, bottomLeft, (0, 255, 0), 2)
-            cv2.line(gray_image, bottomLeft, topLeft, (0, 255, 0), 2)
+            cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
+            cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
+            cv2.line(image, bottomRight, bottomLeft, (0, 255, 0), 2)
+            cv2.line(image, bottomLeft, topLeft, (0, 255, 0), 2)
             
             # draw the ArUco marker ID on the frame
-            cv2.putText(gray_image, str(markerID), (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(image, str(markerID), (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
     
             area, width = calculate_rectangle_area(corners)
                             
@@ -150,26 +148,17 @@ def detect_aruco(image):
                 # compute and draw the center (x, y)-coordinates of the ArUco marker
                 cX = int((topLeft[0] + bottomRight[0]) / 2.0)
                 cY = int((topLeft[1] + bottomRight[1]) / 2.0)
-                cv2.circle(gray_image, (cX, cY), 4, (0, 0, 255), -1)
+                cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
                                 
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(markerCorner, marker_size, camera_matrix, distance_matrix)
                                 
-                # Get the rotation matrix from the rotation vector
-                rotation_matrix, _ = cv2.Rodrigues(rvecs)
-                
-                # Create a Rotation object from the rotation matrix
-                r = Rotation.from_matrix(rotation_matrix)
-
-                # Convert the rotation to Euler angles (in radians)  'zyx' specifies the order of rotations
-                yaw, _, _ = r.as_euler('zyx', degrees=False) 
-                
-                cv2.drawFrameAxes(image, camera_matrix, distance_matrix, rotation_matrix, tvecs[0], axis_length)
+                cv2.drawFrameAxes(image, camera_matrix, distance_matrix, rvecs, tvecs, axis_length)
                 
                 # Store ArUco marker information in the list
                 aruco_info_list.append({'ID': markerID,
                                         'Center': (cX, cY),
-                                        'Angle' : yaw,
-                                        'Distance': tvecs[0][0][2],
+                                        'Angle' : rvecs,
+                                        'Distance': tvecs,
                                         'Width': width})
     
     return aruco_info_list
@@ -195,7 +184,7 @@ class aruco_tf(Node):
         self.listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.br = tf2_ros.TransformBroadcaster(self)                                    # object as transform broadcaster to send transform wrt some frame_id
         self.timer = self.create_timer(image_processing_rate, self.process_image)       # creating a timer based function which gets called on every 0.2 seconds (as defined by 'image_processing_rate' variable)
-        
+
         self.rgb_image = None                                                           # colour raw image variable (from colorimagecb())
         self.depth_image = None                                                         # depth image variable (from depthimagecb())           
             
@@ -223,8 +212,8 @@ class aruco_tf(Node):
         Returns:
         '''
         
-        self.rgb_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
-
+        self.rgb_image = self.bridge.imgmsg_to_cv2(data, "bgr8")        
+        
     def process_image(self):
         '''
         Description:    Timer function used to detect aruco markers and publish tf on estimated poses.
@@ -242,59 +231,81 @@ class aruco_tf(Node):
         focalY = 931.1829833984375
         
         aruco_info_list = []
-            
+    
         # Get aruco center, distance from rgb, angle, width and ids list from 'detect_aruco_center'
         aruco_info_list = detect_aruco(self.rgb_image)
         
-        cv2.imshow("rgb_image", self.rgb_image)
-        cv2.waitKey(1)
+        tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        
+        # Loop over detected box ids received to calculate position and orientation transform to publish TF   
+        for aruco_info in aruco_info_list:
+            
+            marker_id = aruco_info['ID']
+            center = aruco_info['Center']
+            angle = aruco_info['Angle']
+            distance = aruco_info['Distance']
+            width = aruco_info['Width']
+            
+            # Use this equation to correct the input aruco angle received from cv2 aruco function 'estimatePoseSingleMarkers' here
+            angle = (0.788*angle) - ((angle**2)/3160)
+                                    
+            # calculate quaternions from roll pitch yaw (where, roll and pitch are 0 while yaw is corrected aruco_angle)
+            # Create a rotation object
+            r = Rotation.from_euler('xyz', [0, 0, angle[0][0][2]], degrees=False)
 
-        #   ->  Loop over detected box ids received to calculate position and orientation transform to publish TF 
+            # Get the quaternion representation
+            quat = r.as_quat()
+                        
+            # Use center_aruco_list to get realsense depth and log them down.
+            depth_value = self.depth_image[center[1], center[0]]  # Assuming (y, x) coordinates
 
-        #   ->  Use this equation to correct the input aruco angle received from cv2 aruco function 'estimatePoseSingleMarkers' here
-        #       It's a correction formula- 
-        #       angle_aruco = (0.788*angle_aruco) - ((angle_aruco**2)/3160)
+            # Convert depth_value to meters (assuming depth image is in millimeters)
+            depth_meters = depth_value/1000.0
+            
+            # Use this formula to rectify x, y, z based on focal length, center value and size of image
+            x = depth_meters * (sizeCamX - center[0] - centerCamX) / focalX
+            y = depth_meters * (sizeCamY - center[1] - centerCamY) / focalY
+            z = depth_meters
+                        
+            # Create a TransformStamped message
+            transform_cam = TransformStamped()
+            transform_cam.header.stamp = rclpy.time.Time().to_msg()
+            transform_cam.header.frame_id = 'camera_link'  
+            transform_cam.child_frame_id = f'cam_{marker_id}'           
+        
+            # Set the translation
+            transform_cam.transform.translation.x = z
+            transform_cam.transform.translation.y = x
+            transform_cam.transform.translation.z = y
+                        
+            # Set the rotation (quaternion) based on the angle
+            # You might need to adjust this depending on your coordinate system
+            transform_cam.transform.rotation.x = quat[0]
+            transform_cam.transform.rotation.y = quat[1] 
+            transform_cam.transform.rotation.z = quat[2] 
+            transform_cam.transform.rotation.w = quat[3]
 
-        #   ->  Then calculate quaternions from roll pitch yaw (where, roll and pitch are 0 while yaw is corrected aruco_angle)
+            tf_broadcaster.sendTransform(transform_cam)
+            
+            if self.tf_buffer.can_transform('base_link', f'cam_{marker_id}', rclpy.time.Time()):
 
-        #   ->  Use center_aruco_list to get realsense depth and log them down. (divide by 1000 to convert mm to m)
+                # Lookup transform between base_link and cam_<marker_id>
+                try:
+                    transform_lookup = self.tf_buffer.lookup_transform('base_link', f'cam_{marker_id}', rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.2))
+                    
+                    # Publish transform from obj_<marker_id> to base_link
+                    transform_base = TransformStamped()
+                    transform_base.header.stamp = rclpy.time.Time().to_msg()
+                    transform_base.header.frame_id = 'base_link'
+                    transform_base.child_frame_id = f'obj_{marker_id}'
+                    transform_base.transform = transform_lookup.transform
+                    tf_broadcaster.sendTransform(transform_base)
 
-        #   ->  Use this formula to rectify x, y, z based on focal length, center value and size of image
-        #       x = distance_from_rgb * (sizeCamX - cX - centerCamX) / focalX
-        #       y = distance_from_rgb * (sizeCamY - cY - centerCamY) / focalY
-        #       z = distance_from_rgb
-        #       where, 
-        #               cX, and cY from 'center_aruco_list'
-        #               distance_from_rgb is depth of object calculated in previous step
-        #               sizeCamX, sizeCamY, centerCamX, centerCamY, focalX and focalY are defined above
+                except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+                    self.get_logger().warn(f"Failed to lookup transform for marker ID {marker_id}")
 
-        #   ->  Now, mark the center points on image frame using cX and cY variables with help of 'cv2.cirle' function 
-
-        #   ->  Here, till now you receive coordinates from camera_link to aruco marker center position. 
-        #       So, publish this transform w.r.t. camera_link using Geometry Message - TransformStamped 
-        #       so that we will collect it's position w.r.t base_link in next step.
-        #       Use the following frame_id-
-        #           frame_id = 'camera_link'
-        #           child_frame_id = 'cam_<marker_id>'          Ex: cam_20, where 20 is aruco marker ID
-
-        #   ->  Then finally lookup transform between base_link and obj frame to publish the TF
-        #       You may use 'lookup_transform' function to pose of obj frame w.r.t base_link 
-
-        #   ->  And now publish TF between object frame and base_link
-        #       Use the following frame_id-
-        #           frame_id = 'base_link'
-        #           child_frame_id = 'obj_<marker_id>'          Ex: obj_20, where 20 is aruco marker ID
-
-        #   ->  At last show cv2 image window having detected markers drawn and center points located using 'cv2.imshow' function.
-        #       Refer MD book on portal for sample image -> https://portal.e-yantra.org/
-
-        #   ->  NOTE:   The Z axis of TF should be pointing inside the box (Purpose of this will be known in task 1B)
-        #               Also, auto eval script will be judging angular difference aswell. So, make sure that Z axis is inside the box (Refer sample images on Portal - MD book)
-
-        ############################################
-
-
-##################### FUNCTION DEFINITION #######################
+        # cv2.imshow("rgb_image", self.rgb_image)
+        # cv2.waitKey(1)
 
 def main():
     '''
