@@ -231,7 +231,7 @@ class aruco_tf(Node):
         focalY = 931.1829833984375
         
         aruco_info_list = []
-    
+        
         # Get aruco center, distance from rgb, angle, width and ids list from 'detect_aruco_center'
         aruco_info_list = detect_aruco(self.rgb_image)
         
@@ -245,17 +245,41 @@ class aruco_tf(Node):
             angle = aruco_info['Angle']
             distance = aruco_info['Distance']
             width = aruco_info['Width']
-            
-            # Use this equation to correct the input aruco angle received from cv2 aruco function 'estimatePoseSingleMarkers' here
-            angle = (0.788*angle) - ((angle**2)/3160)
-                                    
-            # calculate quaternions from roll pitch yaw (where, roll and pitch are 0 while yaw is corrected aruco_angle)
-            # Create a rotation object
-            r = Rotation.from_euler('xyz', [0, 0, angle[0][0][2]], degrees=False)
-
-            # Get the quaternion representation
-            quat = r.as_quat()
                         
+            # Use this equation to correct the input aruco angle received from cv2 aruco function 'estimatePoseSingleMarkers' here
+            # angle = (0.788*angle) - ((angle**2)/3160)
+                        
+            rotation_matrix, _ = cv2.Rodrigues(angle)
+                        
+            rot_y = np.array([[np.cos(-np.pi/2), 0, np.sin(-np.pi/2)],
+                              [0, 1, 0],
+                              [-np.sin(-np.pi/2), 0, np.cos(-np.pi/2)]])
+                        
+            rot_z = np.array([[np.cos(np.pi/2), -np.sin(np.pi/2), 0],
+                              [np.sin(np.pi/2), np.cos(np.pi/2), 0],
+                              [0, 0, 1]])
+        
+            rot_mat = np.dot(rot_y, rot_z)
+            transform_matrix = np.dot(rot_mat, rotation_matrix)
+                                    
+            # Convert the rotation matrix to a Rotation object
+            r_euler = Rotation.from_matrix(transform_matrix)
+            
+            # print(r_euler)
+
+            # Get the Euler angles in radians (XYZ order by default)
+            euler_angles = r_euler.as_euler('xyz')
+            # print(euler_angles)
+            
+            if marker_id == 1:           
+                r_quat = Rotation.from_euler('xyz', [np.pi/2 - np.pi/12, 0, euler_angles[2]])
+                
+            else:
+                r_quat = Rotation.from_euler('xyz', [np.pi/2, -np.pi/16, euler_angles[2]])
+                       
+            # Get the quaternion representation
+            quat = r_quat.as_quat() 
+                                                
             # Use center_aruco_list to get realsense depth and log them down.
             depth_value = self.depth_image[center[1], center[0]]  # Assuming (y, x) coordinates
 
@@ -279,9 +303,8 @@ class aruco_tf(Node):
             transform_cam.transform.translation.z = y
                         
             # Set the rotation (quaternion) based on the angle
-            # You might need to adjust this depending on your coordinate system
             transform_cam.transform.rotation.x = quat[0]
-            transform_cam.transform.rotation.y = quat[1] 
+            transform_cam.transform.rotation.y = quat[1]
             transform_cam.transform.rotation.z = quat[2] 
             transform_cam.transform.rotation.w = quat[3]
 
