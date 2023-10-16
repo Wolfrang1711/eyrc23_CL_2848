@@ -18,5 +18,12 @@ install(PROGRAMS
     DESTINATION lib/${PROJECT_NAME}
 )
 
+# Install scripts
+install(PROGRAMS
+    scripts/task1b_moveit.py
+    scripts/task1b_servo.py
+    DESTINATION lib/${PROJECT_NAME}
+)
+
 # Setup the project
 ament_package()

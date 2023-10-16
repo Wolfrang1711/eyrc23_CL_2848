@@ -18,9 +18,8 @@ from pymoveit2 import MoveIt2
 from pymoveit2.robots import ur5
 
 DEFAULT_EXAMPLE_MESH = path.join(
-    path.dirname(path.realpath(__file__)), "assets", "suzanne.stl"
+    path.dirname(path.realpath(__file__)), "assets", "rack.stl"
 )
-
 
 def main():
     rclpy.init()
@@ -37,7 +36,7 @@ def main():
         "action",
         "add",
     )
-    node.declare_parameter("position", [0.5, 0.0, 0.5])
+    node.declare_parameter("position", [0.5, 0.0, 1.5])
     node.declare_parameter("quat_xyzw", [0.0, 0.0, -0.707, 0.707])
 
     # Create callback group that allows execution of callbacks in parallel without restrictions

@@ -23,6 +23,9 @@ from rclpy.qos import (
 
 # Initialize message based on passed arguments
 
+linear_speed = 1.0
+angular_speed = 1.0
+
 __twist_msg = TwistStamped()
 __twist_msg.header.frame_id = ur5.base_link_name()
 __twist_msg.twist.linear.x = linear_speed
@@ -42,11 +45,24 @@ def main():
     callback_group = ReentrantCallbackGroup()
     __twist_pub = node.create_publisher(TwistStamped, "/servo_node/delta_twist_cmds", 10)
     
-    def servo_circular_motion():
-        """Move in a circular motion using Servo"""
+    linear = [0.16, 0.0, 0.22]
+    angular = [0.0, 0.0, 0.0]
+    
+    def servo_motion():
+        
+        twist_msg = deepcopy(__twist_msg)
+        twist_msg.header.stamp = node.get_clock().now().to_msg()
+        twist_msg.twist.linear.x *= linear[0]
+        twist_msg.twist.linear.y *= linear[1]
+        twist_msg.twist.linear.z *= linear[2]
+        twist_msg.twist.angular.x *= angular[0]
+        twist_msg.twist.angular.y *= angular[1]
+        twist_msg.twist.angular.z *= angular[2]
+        
+        __twist_pub.publish(twist_msg)
 
     # Create timer for moving in a circular motion
-    node.create_timer(0.02, servo_circular_motion)
+    node.create_timer(0.02, servo_motion)
 
     # Spin the node in background thread(s)
     executor = rclpy.executors.MultiThreadedExecutor(2)

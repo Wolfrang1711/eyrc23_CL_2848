@@ -47,12 +47,8 @@ install(
     share/${PROJECT_NAME}/
 )
 
-install(
-  PROGRAMS
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 install(PROGRAMS
+  scripts/ebot_nav_cmd.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
