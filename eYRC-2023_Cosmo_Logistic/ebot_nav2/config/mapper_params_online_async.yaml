@@ -17,7 +17,6 @@ slam_toolbox:
     scan_topic: /scan  #>> LiDAR data is on this topic
     mode: mapping #localization  #>> Currently we will be mapping using slam-toolbox.
 
-
     # if you'd like to immediately start continuing a map at a given pose
     # or at the dock, but they are mutually exclusive, if pose is given
     # will use pose
